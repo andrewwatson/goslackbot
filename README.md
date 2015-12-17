@@ -27,7 +27,7 @@ var (
 func main() {
 
 	if len(os.Args) != 3 {
-		fmt.Fprintf(os.Stderr, "usage: mybot slack-bot-token tomato-duration\n")
+		fmt.Fprintf(os.Stderr, "usage: tomatobot slack-bot-token tomato-duration\n")
 		os.Exit(1)
 	}
 
@@ -59,18 +59,17 @@ func main() {
 			if strings.HasPrefix(m.Text, ":tomato:") || strings.HasPrefix(m.Text, ":pomodoro:") {
 
 				remindMe := strings.Replace(m.Text, ":tomato: ", "", 1)
-				m.Text = fmt.Sprintf("Ok <@%s>, got it! I'll remind you in %d minutes", m.User, tomatoDuration)
+				response := fmt.Sprintf("Ok <@%s>, got it! I'll remind you in %d minutes", m.User, tomatoDuration)
 
-				bot.SendMessage(m.Channel, m.Text)
+				bot.SendMessage(m.Channel, response)
 
 				go func() {
 
 					after := time.After(time.Minute * time.Duration(tomatoDuration))
 					<-after
 
-					m.Text = fmt.Sprintf("Hey <@%s>, it's been %d minutes since you started '%s'", m.User, tomatoDuration, remindMe)
-					m.ReplyTo = m.Id
-					bot.SendMessage(m.Channel, m.Text)
+					response = fmt.Sprintf("Hey <@%s>, it's been %d minutes since you started '%s'", m.User, tomatoDuration, remindMe)
+					bot.SendMessage(m.Channel, response)
 
 				}()
 
