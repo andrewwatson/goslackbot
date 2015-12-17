@@ -1,6 +1,8 @@
 # goslackbot
 A Slack Bot framework Written in Go
 
+A simple RTM Slack Bot that allows you to either register a channel for new messages to be sent to you or to specify a callback function directly.
+
 Example Application using this bot framework
 ```
 package main
