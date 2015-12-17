@@ -38,8 +38,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// token := "xoxb-16191968215-yRDoPV15kCXYldYA5Qx4U2FV"
-
 	bot, err := goslackbot.NewSlackBot(rtmToken)
 
 	if err != nil {
