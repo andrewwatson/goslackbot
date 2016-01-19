@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"golang.org/x/net/websocket"
@@ -17,6 +18,8 @@ type SlackBot struct {
 	wsURL             string
 	users             map[string]SlackUser
 	channels          map[string]SlackChannel
+	groups            map[string]SlackChannel
+	mpims             map[string]SlackChannel
 	ws                *websocket.Conn
 	OutgoingMessages  chan SlackMessage
 	IncomingMessages  map[string]chan SlackMessage
@@ -27,7 +30,7 @@ var counter uint64
 
 func NewSlackBot(token string) (*SlackBot, error) {
 
-	url := fmt.Sprintf("https://slack.com/api/rtm.start?token=%s", token)
+	url := fmt.Sprintf("https://slack.com/api/rtm.start?mpim_aware=1&token=%s", token)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -66,7 +69,19 @@ func NewSlackBot(token string) (*SlackBot, error) {
 	bot.users = make(map[string]SlackUser)
 	for _, u := range respObj.Users {
 		bot.users[u.ID] = u
-		fmt.Printf("User: %s %s\n", u.ID, u.Name)
+		fmt.Printf("User: %s\t%s\n", u.ID, u.Name)
+	}
+
+	bot.mpims = make(map[string]SlackChannel)
+	for _, mpim := range respObj.MPIMs {
+		bot.channels[mpim.ID] = mpim
+		fmt.Printf("MPIM: %s\t%s\n", mpim.ID, mpim.Name)
+	}
+
+	bot.groups = make(map[string]SlackChannel)
+	for _, group := range respObj.Groups {
+		bot.channels[group.ID] = group
+		fmt.Printf("Group: %s\t%s\n", group.ID, group.Name)
 	}
 
 	bot.OutgoingMessages = make(chan SlackMessage)
@@ -82,12 +97,17 @@ func (s *SlackBot) GetUser(id string) SlackUser {
 
 func (s *SlackBot) GetChannel(id string) SlackChannel {
 
-	return s.channels[id]
+	if strings.HasPrefix(id, "G") {
+		return s.groups[id]
+	} else {
+		return s.channels[id]
+	}
+
 }
 
 func (s *SlackBot) RegisterIncomingChannel(name string, incoming chan SlackMessage) error {
 
-	log.Printf("Registering Channel %s", name)
+	// log.Printf("Registering Incoming Channel %s", name)
 	s.IncomingMessages[name] = incoming
 
 	return nil
@@ -95,6 +115,7 @@ func (s *SlackBot) RegisterIncomingChannel(name string, incoming chan SlackMessa
 
 func (s *SlackBot) RegisterIncomingFunction(name string, runme func(SlackMessage)) {
 
+	log.Printf("Registering Incoming Function %s", name)
 	c := make(chan SlackMessage)
 	s.RegisterIncomingChannel(name, c)
 
@@ -102,10 +123,8 @@ func (s *SlackBot) RegisterIncomingFunction(name string, runme func(SlackMessage
 		for {
 			m := <-c
 			runme(m)
-
 		}
 	}()
-
 }
 
 func getMessage(ws *websocket.Conn) (m SlackMessage, err error) {
@@ -155,18 +174,20 @@ func (s *SlackBot) Connect() error {
 		}
 	}()
 
-	for {
-		m, err := getMessage(ws)
+	go func() {
+		for {
+			m, err := getMessage(ws)
 
-		if err != nil {
-			fmt.Errorf("Incoming Error: %s", err)
-		}
+			if err != nil {
+				fmt.Errorf("Incoming Error: %s", err)
+			}
 
-		// log.Printf("INCOMING MESSAGE: %s", m.Text)
-		for _, c := range s.IncomingMessages {
-			c <- m
+			// log.Printf("INCOMING MESSAGE: %s", m.Text)
+			for _, c := range s.IncomingMessages {
+				c <- m
+			}
 		}
-	}
+	}()
 
 	return nil
 }

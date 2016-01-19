@@ -32,6 +32,8 @@ type SlackRTMResponse struct {
 	Self     SlackRTMResponseSelf `json:"self"`
 	Users    []SlackUser          `json:"users"`
 	Channels []SlackChannel       `json:"channels"`
+	MPIMs    []SlackChannel       `jsonL:"mpims"`
+	Groups   []SlackChannel       `json:"groups"`
 }
 
 type SlackRTMResponseSelf struct {
