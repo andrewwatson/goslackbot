@@ -62,19 +62,19 @@ func NewSlackBot(token string) (*SlackBot, error) {
 
 	bot.channels = make(map[string]SlackChannel)
 	for _, i := range respObj.Channels {
-		bot.channels[i.ID] = i
-		fmt.Printf("Channel Listed: %s %s\n", i.ID, i.Name)
+		bot.channels[i.Name] = i
+		fmt.Printf("Channel: %s %s\n", i.ID, i.Name)
 	}
 
 	bot.users = make(map[string]SlackUser)
 	for _, u := range respObj.Users {
-		bot.users[u.ID] = u
+		bot.users[u.Name] = u
 		fmt.Printf("User: %s\t%s\n", u.ID, u.Name)
 	}
 
 	bot.mpims = make(map[string]SlackChannel)
 	for _, mpim := range respObj.MPIMs {
-		bot.channels[mpim.ID] = mpim
+		bot.channels[mpim.Name] = mpim
 		fmt.Printf("MPIM: %s\t%s\n", mpim.ID, mpim.Name)
 	}
 
@@ -105,6 +105,16 @@ func (s *SlackBot) GetChannel(id string) SlackChannel {
 
 }
 
+func (s *SlackBot) GetChannelByName(name string) SlackChannel {
+
+	if strings.HasPrefix(name, "G") {
+		return s.groups[name]
+	} else {
+		return s.channels[name]
+	}
+
+}
+
 func (s *SlackBot) RegisterIncomingChannel(name string, incoming chan SlackMessage) error {
 
 	// log.Printf("Registering Incoming Channel %s", name)
@@ -131,6 +141,39 @@ func getMessage(ws *websocket.Conn) (m SlackMessage, err error) {
 	err = websocket.JSON.Receive(ws, &m)
 	return
 }
+
+// func (s *SlackBot) SendMessageByChannelName(channelName, message string) error {
+
+// 	var channel SlackChannel
+// 	var err error
+// 	var ok bool
+
+// 	if channel, ok = s.channels[channelName]; ok {
+// 		err = s.SendMessage(channel.ID, message)
+
+// 	} else if channel, ok = s.groups[channelName]; ok {
+// 		err = s.SendMessage(channel.ID, message)
+
+// 	} else {
+
+// 	}
+
+// 	// if s.channels[channelName] != nil {
+// 	// 	channel := s.channels[channelName]
+// 	// } else {
+// 	// 	channel := s.groups[channelName]
+// 	// }
+
+// 	// if channel != nil {
+
+// 	// }
+
+// 	return err
+// }
+
+// func (s *SlackBot) SendChannelMessage(channel, message string) error {
+
+// }
 
 func (s *SlackBot) SendMessage(channel, message string) error {
 
