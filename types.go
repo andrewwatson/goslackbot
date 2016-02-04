@@ -43,6 +43,7 @@ type SlackRTMResponseSelf struct {
 type SlackMessage struct {
 	Id      uint64 `json:"id"`
 	Type    string `json:"type"`
+	SubType string `json:"sub_type"`
 	Channel string `json:"channel"`
 	Text    string `json:"text"`
 	User    string `json:"user"`
