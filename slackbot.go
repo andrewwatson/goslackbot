@@ -151,6 +151,42 @@ type SlackAPIReactionAdd struct {
 	TimeStamp string `json:"timestamp"`
 }
 
+type SlackPostMessageResponse struct {
+	Ok        bool   `json:"ok"`
+	Channel   string `json:"channel"`
+	Timestamp string `json:"ts"`
+}
+
+func (s *SlackBot) PostMessage(channel, text string) (*SlackPostMessageResponse, error) {
+
+	v := url.Values{}
+	v.Set("token", s.rtmToken)
+	v.Set("channel", channel)
+	v.Set("text", text)
+
+	req, err := http.NewRequest("GET", "https://slack.com/api/chat.postMessage?"+v.Encode(), nil)
+
+	req.Header.Add("Content-type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+	responseBody, err := ioutil.ReadAll(resp.Body)
+
+	response := SlackPostMessageResponse{}
+	err = json.Unmarshal(responseBody, &response)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &response, nil
+
+}
+
 func (s *SlackBot) AddReaction(channel, timestamp, reaction string) error {
 
 	v := url.Values{}
@@ -170,7 +206,7 @@ func (s *SlackBot) AddReaction(channel, timestamp, reaction string) error {
 	}
 
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	_, err = ioutil.ReadAll(resp.Body)
 
 	if err != nil {
 		return err
