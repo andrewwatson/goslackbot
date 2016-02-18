@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 
@@ -87,6 +88,7 @@ func NewSlackBot(token string) (*SlackBot, error) {
 	bot.OutgoingMessages = make(chan SlackMessage)
 	bot.IncomingMessages = make(map[string]chan SlackMessage, 0)
 
+	bot.rtmToken = token
 	return &bot, nil
 }
 
@@ -142,38 +144,40 @@ func getMessage(ws *websocket.Conn) (m SlackMessage, err error) {
 	return
 }
 
-// func (s *SlackBot) SendMessageByChannelName(channelName, message string) error {
+type SlackAPIReactionAdd struct {
+	Token     string `json:"token"`
+	Name      string `json:"name"`
+	Channel   string `json:"channel"`
+	TimeStamp string `json:"timestamp"`
+}
 
-// 	var channel SlackChannel
-// 	var err error
-// 	var ok bool
+func (s *SlackBot) AddReaction(channel, timestamp, reaction string) error {
 
-// 	if channel, ok = s.channels[channelName]; ok {
-// 		err = s.SendMessage(channel.ID, message)
+	v := url.Values{}
+	v.Set("token", s.rtmToken)
+	v.Set("name", reaction)
+	v.Set("channel", channel)
+	v.Set("timestamp", timestamp)
 
-// 	} else if channel, ok = s.groups[channelName]; ok {
-// 		err = s.SendMessage(channel.ID, message)
+	req, err := http.NewRequest("GET", "https://slack.com/api/reactions.add?"+v.Encode(), nil)
 
-// 	} else {
+	req.Header.Add("X-Conversation-ID", "0xf00f6")
+	req.Header.Add("Content-type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 
-// 	}
+	if err != nil {
+		return err
+	}
 
-// 	// if s.channels[channelName] != nil {
-// 	// 	channel := s.channels[channelName]
-// 	// } else {
-// 	// 	channel := s.groups[channelName]
-// 	// }
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
 
-// 	// if channel != nil {
+	if err != nil {
+		return err
+	}
 
-// 	// }
-
-// 	return err
-// }
-
-// func (s *SlackBot) SendChannelMessage(channel, message string) error {
-
-// }
+	return nil
+}
 
 func (s *SlackBot) SendMessage(channel, message string) error {
 
