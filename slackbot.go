@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/net/websocket"
 )
@@ -25,7 +26,33 @@ type SlackBot struct {
 	OutgoingMessages  chan SlackMessage
 	IncomingMessages  map[string]chan SlackMessage
 	IncomingFunctions map[string]func(SlackMessage)
+	Conversations     map[string]SlackConversation
+	ReactionCallbacks map[string]func(SlackMessage)
 }
+
+// type SlackReactionCallback func(channel, timestamp string)
+
+type SlackAPIReactionAdd struct {
+	Token     string `json:"token"`
+	Name      string `json:"name"`
+	Channel   string `json:"channel"`
+	TimeStamp string `json:"timestamp"`
+}
+
+type SlackPostMessageResponse struct {
+	Ok        bool   `json:"ok"`
+	Channel   string `json:"channel"`
+	TimeStamp string `json:"ts"`
+}
+
+type SlackConversation struct {
+	Messages []SlackMessage
+	Ongoing  bool
+	State    string
+	Started  time.Time
+}
+
+type ConversationMap map[string]SlackConversation
 
 var counter uint64
 
@@ -70,26 +97,62 @@ func NewSlackBot(token string) (*SlackBot, error) {
 	bot.users = make(map[string]SlackUser)
 	for _, u := range respObj.Users {
 		bot.users[u.Name] = u
-		fmt.Printf("User: %s\t%s\n", u.ID, u.Name)
+		// fmt.Printf("User: %s\t%s\n", u.ID, u.Name)
 	}
 
 	bot.mpims = make(map[string]SlackChannel)
 	for _, mpim := range respObj.MPIMs {
 		bot.channels[mpim.Name] = mpim
-		fmt.Printf("MPIM: %s\t%s\n", mpim.ID, mpim.Name)
+		// fmt.Printf("MPIM: %s\t%s\n", mpim.ID, mpim.Name)
 	}
 
 	bot.groups = make(map[string]SlackChannel)
 	for _, group := range respObj.Groups {
 		bot.channels[group.ID] = group
-		fmt.Printf("Group: %s\t%s\n", group.ID, group.Name)
+		// fmt.Printf("Group: %s\t%s\n", group.ID, group.Name)
 	}
 
 	bot.OutgoingMessages = make(chan SlackMessage)
 	bot.IncomingMessages = make(map[string]chan SlackMessage, 0)
 
 	bot.rtmToken = token
+
+	bot.ReactionCallbacks = make(map[string]func(SlackMessage))
 	return &bot, nil
+}
+
+func (s *SlackBot) RemoveReactionCallback(channel, ts string) {
+	key := strings.Join([]string{channel, ts}, "+")
+	s.ReactionCallbacks[key] = nil
+}
+
+func (s *SlackBot) AddReactionCallback(channel, ts string, callback func(SlackMessage)) {
+
+	key := strings.Join([]string{channel, ts}, "+")
+	s.ReactionCallbacks[key] = callback
+}
+
+func (s *SlackBot) TriggerReactionCallback(m SlackMessage) error {
+
+	key := strings.Join([]string{m.Channel, m.TimeStamp}, "+")
+	if callback, ok := s.ReactionCallbacks[key]; ok {
+		callback(m)
+	}
+
+	return nil
+}
+
+func (s *SlackBot) FetchReactionCallback(channel, timestamp string) func(m SlackMessage) {
+
+	key := strings.Join([]string{channel, timestamp}, "+")
+
+	if callback, ok := s.ReactionCallbacks[key]; ok {
+		return callback
+	}
+
+	return func(m SlackMessage) {
+		log.Println("DO NOTHING")
+	}
 }
 
 func (s *SlackBot) GetUser(id string) SlackUser {
@@ -104,24 +167,19 @@ func (s *SlackBot) GetChannel(id string) SlackChannel {
 	} else {
 		return s.channels[id]
 	}
-
 }
 
 func (s *SlackBot) GetChannelByName(name string) SlackChannel {
-
 	if strings.HasPrefix(name, "G") {
 		return s.groups[name]
 	} else {
 		return s.channels[name]
 	}
-
 }
 
 func (s *SlackBot) RegisterIncomingChannel(name string, incoming chan SlackMessage) error {
 
-	// log.Printf("Registering Incoming Channel %s", name)
 	s.IncomingMessages[name] = incoming
-
 	return nil
 }
 
@@ -140,21 +198,20 @@ func (s *SlackBot) RegisterIncomingFunction(name string, runme func(SlackMessage
 }
 
 func getMessage(ws *websocket.Conn) (m SlackMessage, err error) {
-	err = websocket.JSON.Receive(ws, &m)
+
+	// err = websocket.JSON.Receive(ws, &m)
+	var message string
+	websocket.Message.Receive(ws, &message)
+
+	err = json.Unmarshal([]byte(message), &m)
+	// log.Printf("RAW %s\n", message)
+
+	if m.Channel == "" && m.Item.Channel != "" {
+		m.Channel = m.Item.Channel
+		m.TimeStamp = m.Item.TimeStamp
+	}
+
 	return
-}
-
-type SlackAPIReactionAdd struct {
-	Token     string `json:"token"`
-	Name      string `json:"name"`
-	Channel   string `json:"channel"`
-	TimeStamp string `json:"timestamp"`
-}
-
-type SlackPostMessageResponse struct {
-	Ok        bool   `json:"ok"`
-	Channel   string `json:"channel"`
-	Timestamp string `json:"ts"`
 }
 
 func (s *SlackBot) PostMessage(channel, text string) (*SlackPostMessageResponse, error) {
@@ -184,7 +241,6 @@ func (s *SlackBot) PostMessage(channel, text string) (*SlackPostMessageResponse,
 	}
 
 	return &response, nil
-
 }
 
 func (s *SlackBot) AddReaction(channel, timestamp, reaction string) error {
@@ -265,7 +321,7 @@ func (s *SlackBot) Connect() error {
 				fmt.Errorf("Incoming Error: %s", err)
 			}
 
-			// log.Printf("INCOMING MESSAGE: %s", m.Text)
+			// log.Printf("INCOMING MESSAGE: %s", m.Type)
 			for _, c := range s.IncomingMessages {
 				c <- m
 			}

@@ -41,12 +41,21 @@ type SlackRTMResponseSelf struct {
 }
 
 type SlackMessage struct {
-	Id        uint64 `json:"id"`
+	Id        uint64           `json:"id"`
+	Type      string           `json:"type"`
+	SubType   string           `json:"sub_type"`
+	Channel   string           `json:"channel"`
+	Text      string           `json:"text"`
+	User      string           `json:"user"`
+	ReplyTo   uint64           `json:"reply_to, omitempty"`
+	TimeStamp string           `json:"ts, omitempty"`
+	Item      SlackMessageItem `json:"item, omitempty"`
+	Name      string           `json:"name, omitempty"`
+	Reaction  string           `json:"reaction, omitempty"`
+}
+
+type SlackMessageItem struct {
 	Type      string `json:"type"`
-	SubType   string `json:"sub_type"`
 	Channel   string `json:"channel"`
-	Text      string `json:"text"`
-	User      string `json:"user"`
-	ReplyTo   uint64 `json:"reply_to, omitempty"`
-	TimeStamp string `json:"ts, omitempty"`
+	TimeStamp string `json:"ts"`
 }
