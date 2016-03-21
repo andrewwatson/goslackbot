@@ -1,4 +1,16 @@
 # goslackbot
+
+This is a fork of the excellent Slack Bot framework by andrewwatson: https://github.com/andrewwatson/goslackbot
+
+This fork is meant for experimenting with some ideas and implementing some of the features from the howdy.ai botkit: https://github.com/howdyai/botkit
+
+I will try to document all changes accordingly and submit PRs back to https://github.com/andrewwatson/goslackbot when appropriate
+
+The sample code below is from the original README.
+
+---
+
+
 A Slack Bot framework Written in Go
 
 A simple RTM Slack Bot that allows you to either register a channel for new messages to be sent to you or to specify a callback function directly.
