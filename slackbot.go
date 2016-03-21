@@ -21,6 +21,7 @@ type SlackBot struct {
 	users             map[string]SlackUser
 	channels          map[string]SlackChannel
 	groups            map[string]SlackChannel
+	ims               map[string]SlackChannel // direct messages or im in slack lingo
 	mpims             map[string]SlackChannel
 	teams             map[string]SlackTeam
 	ws                *websocket.Conn
@@ -118,6 +119,11 @@ func NewSlackBot(token string) (*SlackBot, error) {
 		// fmt.Printf("Group: %s\t%s\n", group.ID, group.Name)
 	}
 
+	bot.ims = make(map[string]SlackChannel)
+	for _, im := range respObj.IMs {
+		bot.ims[im.ID] = im
+	}
+
 	bot.OutgoingMessages = make(chan SlackMessage)
 	bot.IncomingMessages = make(map[string]chan SlackMessage, 0)
 
@@ -171,6 +177,9 @@ func (s *SlackBot) GetChannel(id string) SlackChannel {
 	if strings.HasPrefix(id, "G") {
 		return s.groups[id]
 	} else {
+		if strings.HasPrefix(id, "D") {
+			return s.ims[id]
+		}
 		return s.channels[id]
 	}
 }
@@ -179,6 +188,9 @@ func (s *SlackBot) GetChannelByName(name string) SlackChannel {
 	if strings.HasPrefix(name, "G") {
 		return s.groups[name]
 	} else {
+		if strings.HasPrefix(name, "D") {
+			return s.ims[name]
+		}
 		return s.channels[name]
 	}
 }
