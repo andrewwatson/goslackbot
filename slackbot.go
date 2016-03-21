@@ -22,6 +22,7 @@ type SlackBot struct {
 	channels          map[string]SlackChannel
 	groups            map[string]SlackChannel
 	mpims             map[string]SlackChannel
+	teams             map[string]SlackTeam
 	ws                *websocket.Conn
 	OutgoingMessages  chan SlackMessage
 	IncomingMessages  map[string]chan SlackMessage
@@ -94,6 +95,11 @@ func NewSlackBot(token string) (*SlackBot, error) {
 		fmt.Printf("Channel: %s %s\n", i.ID, i.Name)
 	}
 
+	bot.teams = make(map[string]SlackTeam)
+	for _, i := range respObj.Teams {
+		bot.teams[i.Name] = i
+		log.Printf("Team: %s %s\n", i.ID, i.Name)
+	}
 	bot.users = make(map[string]SlackUser)
 	for _, u := range respObj.Users {
 		bot.users[u.Name] = u

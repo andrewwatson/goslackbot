@@ -34,6 +34,7 @@ type SlackRTMResponse struct {
 	Channels []SlackChannel       `json:"channels"`
 	MPIMs    []SlackChannel       `jsonL:"mpims"`
 	Groups   []SlackChannel       `json:"groups"`
+	Teams    []SlackTeam          `json:"teams"`
 }
 
 type SlackRTMResponseSelf struct {
@@ -62,7 +63,7 @@ type SlackMessageItem struct {
 }
 
 type SlackTeam struct {
-	Id          uint64 `json:"id"`
+	ID          uint64 `json:"id"`
 	Name        string `json:"name"`
 	EmailDomain string `json:"email_domain"`
 	Domain      string `json:"domain"`
