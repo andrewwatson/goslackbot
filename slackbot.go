@@ -325,7 +325,8 @@ func (s *SlackBot) Connect() error {
 	go func() {
 		for {
 			m := <-s.OutgoingMessages
-			m.Id = atomic.AddUint64(&counter, 1)
+			channel := s.GetChannel(m.Channel)
+			m.Id = atomic.AddUint64(&channel.LastMessageID, 1)
 			websocket.JSON.Send(s.ws, m)
 
 		}
