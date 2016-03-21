@@ -37,7 +37,8 @@ type SlackRTMResponse struct {
 }
 
 type SlackRTMResponseSelf struct {
-	Id string `json:"id"`
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type SlackMessage struct {
@@ -58,4 +59,11 @@ type SlackMessageItem struct {
 	Type      string `json:"type"`
 	Channel   string `json:"channel"`
 	TimeStamp string `json:"ts"`
+}
+
+type SlackTeam struct {
+	Id          uint64 `json:"id"`
+	Name        string `json:"name"`
+	EmailDomain string `json:"email_domain"`
+	Domain      string `json:"domain"`
 }
