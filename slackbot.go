@@ -297,16 +297,36 @@ func (s *SlackBot) RegisterIncomingFunction(name string, runme func(SlackMessage
 	}()
 }
 
-func getMessage(ws *websocket.Conn) (m SlackMessage, err error) {
+func getMessage(ws *websocket.Conn) (m SlackMessage, shouldReconnect bool, err error) {
 
 	// err = websocket.JSON.Receive(ws, &m)
 	var message string
-	if err = websocket.Message.Receive(ws, &message); err != nil {
-		log.Printf("Failed to receive websocket message %s \n", err)
-		if err.Error() == "EOF" || strings.HasSuffix(err.Error(), "timed out") {
-			return
+	var retry time.Duration = 1
+	// socket/network errors
+	errors := []string{"EOF", "timed out", "network is down"}
+
+	for {
+		if err = websocket.Message.Receive(ws, &message); err != nil {
+			log.Printf("Failed to receive websocket message %s \n", err)
+			for _, e := range errors {
+				if strings.HasSuffix(err.Error(), e) {
+					shouldReconnect = true
+					return // network/socket error, need to tear down the socket and start over.
+				}
+			}
+			// transient error, exponential retry for n times and then just give up
+			time.Sleep(time.Second * retry)
+			retry = retry * 2
+			if retry > 30 {
+				// still having issues with the network, an error we are not accounting for yet, just give up and reconstruct connection
+				shouldReconnect = true
+				return
+			}
+		} else {
+			break
 		}
 	}
+	shouldReconnect = false // we may get further errors with the unmarshaling but that should not cause us to reconnect.
 
 	err = json.Unmarshal([]byte(message), &m)
 	// log.Printf("RAW %s\n", message)
@@ -450,15 +470,13 @@ func (s *SlackBot) Connect() error {
 
 	go func() {
 		for {
-			m, err := getMessage(ws)
+			m, shouldReconnect, err := getMessage(ws)
 
-			if err != nil {
-				if err.Error() == "EOF" || strings.HasSuffix(err.Error(), "timed out") {
-					time.Sleep(time.Second * 1)
-					log.Println("Reattempting WS reconstruction...")
-					ws = s.ReConnect()
+			if err != nil && shouldReconnect {
+				time.Sleep(time.Second * 1)
+				log.Println("Reattempting WS reconstruction...")
+				ws = s.ReConnect()
 
-				}
 			} else {
 				// send the incoming message to all registered listeners.
 				for _, c := range s.IncomingMessages {
