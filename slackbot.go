@@ -72,6 +72,7 @@ func NewSlackBot(token string) (*SlackBot, error) {
 	body, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
+		log.Printf("Error Creating Bot: %s \n", err)
 		return nil, err
 	}
 
@@ -133,6 +134,85 @@ func NewSlackBot(token string) (*SlackBot, error) {
 	return &bot, nil
 }
 
+func (s *SlackBot) ReConnect() *websocket.Conn {
+	for {
+		url := fmt.Sprintf("https://slack.com/api/rtm.start?mpim_aware=1&token=%s", s.rtmToken)
+		resp, err := http.Get(url)
+		if err != nil {
+			time.Sleep(time.Minute * 1)
+			continue
+		}
+		if resp.StatusCode != 200 {
+			err = fmt.Errorf("API request failed with code %d", resp.StatusCode)
+			time.Sleep(time.Minute * 1)
+			continue
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			log.Printf("Error Reconnecting Bot: %s \n", err)
+			time.Sleep(time.Minute * 1)
+			continue
+		}
+
+		var respObj SlackRTMResponse
+		err = json.Unmarshal(body, &respObj)
+		if err != nil {
+			log.Printf("Error Unmarshaling RTM Response : %s \n", err)
+			time.Sleep(time.Minute * 1)
+			continue
+		}
+
+		if !respObj.Ok {
+			log.Printf("Slack error: %s", respObj.Error)
+			time.Sleep(time.Minute * 1)
+			continue
+		}
+
+		s.SetURL(respObj.Url)
+		s.SetID((respObj.Self.Id))
+
+		s.channels = make(map[string]SlackChannel)
+		for _, i := range respObj.Channels {
+			s.channels[i.Name] = i
+			fmt.Printf("Channel: %s %s\n", i.ID, i.Name)
+		}
+
+		s.teams = make(map[string]SlackTeam)
+		for _, i := range respObj.Teams {
+			s.teams[i.Name] = i
+			log.Printf("Team: %s %s\n", i.ID, i.Name)
+		}
+		s.users = make(map[string]SlackUser)
+		for _, u := range respObj.Users {
+			s.users[u.Name] = u
+			// fmt.Printf("User: %s\t%s\n", u.ID, u.Name)
+		}
+
+		s.mpims = make(map[string]SlackChannel)
+		for _, mpim := range respObj.MPIMs {
+			s.channels[mpim.Name] = mpim
+			// fmt.Printf("MPIM: %s\t%s\n", mpim.ID, mpim.Name)
+		}
+
+		s.groups = make(map[string]SlackChannel)
+		for _, group := range respObj.Groups {
+			s.channels[group.ID] = group
+			// fmt.Printf("Group: %s\t%s\n", group.ID, group.Name)
+		}
+
+		s.ims = make(map[string]SlackChannel)
+		for _, im := range respObj.IMs {
+			s.ims[im.ID] = im
+		}
+		ws, err := websocket.Dial(s.wsURL, "", "https://api.slack.com/")
+		if err == nil {
+			s.ws = ws
+			return ws
+		}
+		time.Sleep(time.Minute * 1)
+	}
+}
 func (s *SlackBot) RemoveReactionCallback(channel, ts string) {
 	key := strings.Join([]string{channel, ts}, "+")
 	s.ReactionCallbacks[key] = nil
@@ -210,7 +290,9 @@ func (s *SlackBot) RegisterIncomingFunction(name string, runme func(SlackMessage
 	go func() {
 		for {
 			m := <-c
-			runme(m)
+			if m.Type != "" && m.Type != "error" && m.Type != "pong" {
+				runme(m)
+			}
 		}
 	}()
 }
@@ -219,7 +301,12 @@ func getMessage(ws *websocket.Conn) (m SlackMessage, err error) {
 
 	// err = websocket.JSON.Receive(ws, &m)
 	var message string
-	websocket.Message.Receive(ws, &message)
+	if err = websocket.Message.Receive(ws, &message); err != nil {
+		log.Printf("Failed to receive websocket message %s \n", err)
+		if err.Error() == "EOF" || strings.HasSuffix(err.Error(), "timed out") {
+			return
+		}
+	}
 
 	err = json.Unmarshal([]byte(message), &m)
 	// log.Printf("RAW %s\n", message)
@@ -296,9 +383,18 @@ func (s *SlackBot) SendMessage(channel, message string) error {
 		Channel: channel,
 		Type:    "message",
 	}
-
 	s.OutgoingMessages <- m
+	return nil
+}
 
+func (s *SlackBot) Ping() error {
+	m := SlackMessage{
+		Text:    "ping",
+		Type:    "ping",
+		Channel: "",
+	}
+	// log.Printf("Queueing Ping message %s \n", time.Now())
+	s.OutgoingMessages <- m
 	return nil
 }
 
@@ -326,8 +422,28 @@ func (s *SlackBot) Connect() error {
 		for {
 			m := <-s.OutgoingMessages
 			channel := s.GetChannel(m.Channel)
-			m.Id = atomic.AddUint64(&channel.LastMessageID, 1)
-			websocket.JSON.Send(s.ws, m)
+			if m.Channel != "" {
+				m.Id = atomic.AddUint64(&channel.LastMessageID, 1)
+			}
+
+			// if m.Type == "ping" {
+			// 	log.Printf("pinging... %s \n", time.Now().String())
+			// }
+			var retry time.Duration = 1
+
+			for {
+				if err := websocket.JSON.Send(s.ws, m); err != nil {
+					log.Printf("Error %v sending message %#v on websocket\n", err, m)
+					time.Sleep(retry * time.Second)
+					if retry < 60 {
+						retry = retry * 2 // exponential retry
+					}
+
+				} else {
+					retry = 1
+					break
+				}
+			}
 
 		}
 	}()
@@ -337,15 +453,27 @@ func (s *SlackBot) Connect() error {
 			m, err := getMessage(ws)
 
 			if err != nil {
-				fmt.Errorf("Incoming Error: %s", err)
-			}
+				if err.Error() == "EOF" || strings.HasSuffix(err.Error(), "timed out") {
+					time.Sleep(time.Second * 1)
+					log.Println("Reattempting WS reconstruction...")
+					ws = s.ReConnect()
 
-			// log.Printf("INCOMING MESSAGE: %s", m.Type)
-			for _, c := range s.IncomingMessages {
-				c <- m
+				}
+			} else {
+				// send the incoming message to all registered listeners.
+				for _, c := range s.IncomingMessages {
+					c <- m
+				}
 			}
 		}
 	}()
 
+	go func() {
+		for {
+			// log.Printf("Ping process starting...\n")
+			s.Ping()
+			time.Sleep(time.Second * 30)
+		}
+	}()
 	return nil
 }
