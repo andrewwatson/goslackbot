@@ -20,9 +20,10 @@ type SlackUserProfile struct {
 }
 
 type SlackChannel struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	IsArchived bool   `json:"is_archived"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	IsArchived    bool   `json:"is_archived"`
+	LastMessageID uint64 `json:"-"`
 }
 
 type SlackRTMResponse struct {
@@ -32,12 +33,15 @@ type SlackRTMResponse struct {
 	Self     SlackRTMResponseSelf `json:"self"`
 	Users    []SlackUser          `json:"users"`
 	Channels []SlackChannel       `json:"channels"`
+	IMs      []SlackChannel       `json:"channels"`
 	MPIMs    []SlackChannel       `jsonL:"mpims"`
 	Groups   []SlackChannel       `json:"groups"`
+	Teams    []SlackTeam          `json:"teams"`
 }
 
 type SlackRTMResponseSelf struct {
-	Id string `json:"id"`
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type SlackMessage struct {
@@ -58,4 +62,11 @@ type SlackMessageItem struct {
 	Type      string `json:"type"`
 	Channel   string `json:"channel"`
 	TimeStamp string `json:"ts"`
+}
+
+type SlackTeam struct {
+	ID          uint64 `json:"id"`
+	Name        string `json:"name"`
+	EmailDomain string `json:"email_domain"`
+	Domain      string `json:"domain"`
 }
