@@ -454,6 +454,11 @@ func (s *SlackBot) Connect() error {
 			for {
 				if err := websocket.JSON.Send(s.ws, m); err != nil {
 					log.Printf("Error %v sending message %#v on websocket\n", err, m)
+					if m.Type == "ping" {
+						// throw away the ping if we are having network issues. wait on the socket to be reconstructed elsewhere.
+						retry = 1
+						break
+					}
 					time.Sleep(retry * time.Second)
 					if retry < 60 {
 						retry = retry * 2 // exponential retry
